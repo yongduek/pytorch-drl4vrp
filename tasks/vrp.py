@@ -10,7 +10,7 @@ import os
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from torch.autograd import Variable
+# from torch.autograd import Variable
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -77,15 +77,18 @@ class VehicleRoutingDataset(Dataset):
             return demands * 0.
 
         # Otherwise, we can choose to go anywhere where demand is > 0
-        new_mask = demands.ne(0) * demands.lt(loads)
+        new_mask = demands.ne(0) * demands.lt(loads)  # torch.logical_and(demands.ne(0), demands.lt(loads))
 
         # We should avoid traveling to the depot back-to-back
         repeat_home = chosen_idx.ne(0)
 
         if repeat_home.any():
-            new_mask[repeat_home.nonzero(), 0] = 1.
-        if (1 - repeat_home).any():
-            new_mask[(1 - repeat_home).nonzero(), 0] = 0.
+            new_mask[repeat_home.nonzero(), 0] = True #1.
+        inverted = torch.logical_not(repeat_home)
+        if inverted.any():
+            new_mask[inverted.nonzero(), 0] = False
+        # if (1 - repeat_home).any():
+        #     new_mask[(1 - repeat_home).nonzero(), 0] = False #0.
 
         # ... unless we're waiting for all other samples in a minibatch to finish
         has_no_load = loads[:, 0].eq(0).float()
@@ -93,8 +96,8 @@ class VehicleRoutingDataset(Dataset):
 
         combined = (has_no_load + has_no_demand).gt(0)
         if combined.any():
-            new_mask[combined.nonzero(), 0] = 1.
-            new_mask[combined.nonzero(), 1:] = 0.
+            new_mask[combined.nonzero(), 0] = True #1.
+            new_mask[combined.nonzero(), 1:] = False #0.
 
         return new_mask.float()
 
@@ -132,7 +135,9 @@ class VehicleRoutingDataset(Dataset):
             all_demands[depot.nonzero().squeeze(), 0] = 0.
 
         tensor = torch.cat((all_loads.unsqueeze(1), all_demands.unsqueeze(1)), 1)
-        return torch.tensor(tensor.data, device=dynamic.device)
+        
+        return tensor.clone().detach().to(dynamic.device)
+        # return torch.tensor(tensor.data, device=dynamic.device)
 
 
 def reward(static, tour_indices):
